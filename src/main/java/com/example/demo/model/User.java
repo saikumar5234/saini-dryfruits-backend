@@ -20,7 +20,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String mobile;
     
-    @Column(unique = true, nullable = false, length = 15)
+    @Column(unique = true, nullable = true, length = 15)  // nullable = true
     private String gstNumber;
     
     @Column(name = "password_hash", nullable = false)

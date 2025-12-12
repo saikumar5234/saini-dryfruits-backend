@@ -7,6 +7,8 @@ import com.example.demo.Repository.UserSessionRepository;
 import com.example.demo.Repository.UserSessionSummaryRepository;
 import com.example.demo.dto.AdminLoginDTO;
 import com.example.demo.dto.AdminSignupRequestDTO;
+import com.example.demo.dto.BannerTextRequest;
+import com.example.demo.dto.BannerTextResponse;
 import com.example.demo.dto.CreateProductRequest;
 import com.example.demo.dto.LoginRequest;
 import com.example.demo.dto.ProductResponseDTO;
@@ -24,6 +26,7 @@ import com.example.demo.model.UserSession;
 import com.example.demo.model.UserSessionSummary;
 import com.example.demo.services.AdminLoginService;
 import com.example.demo.services.AdminSignupRequestService;
+import com.example.demo.services.BannerTextService;
 import com.example.demo.services.SmsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -58,6 +61,8 @@ public class Controller {
 	    private AdminSignupRequestService adminSignupRequestService;
 	 @Autowired
 	    private AdminLoginService adminLoginService;
+	 @Autowired
+	    private BannerTextService bannerTextService;
 
 
 	private static final Pattern GST_PATTERN = Pattern.compile("^[0-9A-Z]{15}$");
@@ -75,7 +80,7 @@ public class Controller {
     private static final long OTP_EXPIRY_TIME = 5 * 60 * 1000; // 5 minutes
 
     // Helper method to build OTP key
-    private String buildOtpKey(String mobile, String gstNumber, String purpose) {
+    protected String buildOtpKey(String mobile, String gstNumber, String purpose) {
         // Normalize inputs
         if (mobile != null) mobile = mobile.trim();
         if (gstNumber != null) gstNumber = gstNumber != null ? gstNumber.trim().toUpperCase() : null;
@@ -108,7 +113,54 @@ public class Controller {
     	}
     
     
-      
+    @GetMapping("/banner-text")
+    public ResponseEntity<BannerTextResponse> getBannerText() {
+        try {
+            String text = bannerTextService.getActiveBannerText();
+            
+            BannerTextResponse response = new BannerTextResponse();
+            response.setSuccess(true);
+            response.setText(text);
+            response.setMessage("Banner text retrieved successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            BannerTextResponse response = new BannerTextResponse();
+            response.setSuccess(false);
+            response.setText("Welcome to Saini Mewa Stores - Your trusted source for premium dry fruits! 🥜✨");
+            response.setMessage("Error retrieving banner text: " + e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    @PostMapping("/banner-text")
+    public ResponseEntity<BannerTextResponse> createOrUpdateBannerText(@RequestBody BannerTextRequest request) {
+        try {
+            if (request.getText() == null || request.getText().trim().isEmpty()) {
+                BannerTextResponse response = new BannerTextResponse();
+                response.setSuccess(false);
+                response.setMessage("Text cannot be empty");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            bannerTextService.createOrUpdateBannerText(request.getText());
+            
+            BannerTextResponse response = new BannerTextResponse();
+            response.setSuccess(true);
+            response.setText(request.getText());
+            response.setMessage("Banner text updated successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            BannerTextResponse response = new BannerTextResponse();
+            response.setSuccess(false);
+            response.setMessage("Error updating banner text: " + e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
     @PostMapping("/admin-signup")
     public ResponseEntity<Map<String, Object>> adminSignup(@RequestBody AdminSignupRequestDTO dto) {
         Map<String, Object> response = new HashMap<>();
@@ -249,24 +301,23 @@ public class Controller {
             return ResponseEntity.badRequest().body(resp);
         }
         
-        if (req.gstNumber == null || req.gstNumber.trim().isEmpty()) {
-            resp.put("success", false);
-            resp.put("error", "GST number is required");
-            return ResponseEntity.badRequest().body(resp);
-        }
-        
-        // Validate GST number format (15 alphanumeric characters)
-        String gstNumber = req.gstNumber.trim().toUpperCase();
-        if (gstNumber.length() != 15) {
-            resp.put("success", false);
-            resp.put("error", "GST number must be exactly 15 characters");
-            return ResponseEntity.badRequest().body(resp);
-        }
-        
-        if (!GST_PATTERN.matcher(gstNumber).matches()) {
-            resp.put("success", false);
-            resp.put("error", "Invalid GST number format. Must be 15 alphanumeric characters");
-            return ResponseEntity.badRequest().body(resp);
+        // GST number is OPTIONAL - validate only if provided
+        String gstNumber = null;
+        if (req.gstNumber != null && !req.gstNumber.trim().isEmpty()) {
+            gstNumber = req.gstNumber.trim().toUpperCase();
+            
+            // Validate GST number format (15 alphanumeric characters)
+            if (gstNumber.length() != 15) {
+                resp.put("success", false);
+                resp.put("error", "GST number must be exactly 15 characters");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            if (!GST_PATTERN.matcher(gstNumber).matches()) {
+                resp.put("success", false);
+                resp.put("error", "Invalid GST number format. Must be 15 alphanumeric characters");
+                return ResponseEntity.badRequest().body(resp);
+            }
         }
         
         if (req.password == null || req.password.length() < 6) {
@@ -282,8 +333,8 @@ public class Controller {
             return ResponseEntity.badRequest().body(resp);
         }
         
-        // Check if GST number already exists
-        if (userRepository.findByGstNumber(gstNumber).isPresent()) {
+        // Check if GST number already exists (only if GST is provided)
+        if (gstNumber != null && userRepository.findByGstNumber(gstNumber).isPresent()) {
             resp.put("success", false);
             resp.put("error", "GST number already exists");
             return ResponseEntity.badRequest().body(resp);
@@ -295,7 +346,7 @@ public class Controller {
             user.setFirstName(req.firstName.trim());
             user.setLastName(req.lastName.trim());
             user.setMobile(req.mobile);
-            user.setGstNumber(gstNumber);
+            user.setGstNumber(gstNumber);  // Can be null now
             user.setPasswordHash(passwordEncoder.encode(req.password));
             user.setStatus(Status.PENDING);
             
@@ -304,7 +355,7 @@ public class Controller {
             // Create initial UserSessionSummary for new user
             UserSessionSummary initialSummary = new UserSessionSummary();
             initialSummary.setUserId(savedUser.getId().toString());
-            initialSummary.setUserGstNumber(savedUser.getGstNumber());
+            initialSummary.setUserGstNumber(savedUser.getGstNumber());  // Can be null
             initialSummary.setUserMobile(savedUser.getMobile());
             initialSummary.setUserName(savedUser.getFirstName() + " " + savedUser.getLastName());
             initialSummary.setTotalSessions(0);
@@ -315,22 +366,28 @@ public class Controller {
             initialSummary.setUpdatedAt(LocalDateTime.now());
             userSessionSummaryRepository.save(initialSummary);
             
+            // Build user response
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("id", savedUser.getId());
+            userData.put("firstName", savedUser.getFirstName());
+            userData.put("lastName", savedUser.getLastName());
+            userData.put("gstNumber", savedUser.getGstNumber() != null ? savedUser.getGstNumber() : "");
+            userData.put("mobile", savedUser.getMobile());
+            userData.put("status", savedUser.getStatus().toString());
+            userData.put("isApproved", savedUser.getStatus() == Status.APPROVED);
+            userData.put("approved", savedUser.getStatus() == Status.APPROVED);
+            userData.put("createdAt", savedUser.getCreatedAt().toString());
+            userData.put("registrationDate", savedUser.getCreatedAt().toString());
+            
             resp.put("success", true);
             resp.put("message", "User registered successfully. Please login to continue.");
             resp.put("userId", savedUser.getId());
-            resp.put("user", Map.of(
-                "id", savedUser.getId(),
-                "firstName", savedUser.getFirstName(),
-                "lastName", savedUser.getLastName(),
-                "gstNumber", savedUser.getGstNumber(),
-                "mobile", savedUser.getMobile(),
-                "status", savedUser.getStatus().toString(),
-                "createdAt", savedUser.getCreatedAt()
-            ));
+            resp.put("user", userData);
             
             return ResponseEntity.ok(resp);
             
         } catch (Exception e) {
+            e.printStackTrace();
             resp.put("success", false);
             resp.put("error", "Registration failed. Please try again.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
@@ -341,41 +398,66 @@ public class Controller {
     public ResponseEntity<Map<String, Object>> checkUserExists(@RequestBody Map<String, String> request) {
         Map<String, Object> resp = new HashMap<>();
         
-        String gstNumber = request.get("gstNumber");
-        String mobile = request.get("mobile");
-        
         try {
+            String mobile = request.get("mobile");
+            String gstNumber = request.get("gstNumber");
+            
+            // Check if at least one identifier is provided
+            if ((mobile == null || mobile.trim().isEmpty()) && 
+                (gstNumber == null || gstNumber.trim().isEmpty())) {
+                resp.put("exists", false);
+                resp.put("error", "Mobile number or GST number is required");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
             boolean exists = false;
             User user = null;
             
-            if (gstNumber != null && !gstNumber.isEmpty()) {
-                user = userRepository.findByGstNumber(gstNumber.toUpperCase()).orElse(null);
-                exists = user != null;
-            } else if (mobile != null && !mobile.isEmpty()) {
-                user = userRepository.findByMobile(mobile).orElse(null);
-                exists = user != null;
+            // Check by mobile if provided
+            if (mobile != null && !mobile.trim().isEmpty()) {
+                mobile = mobile.trim();
+                Optional<User> userOpt = userRepository.findByMobile(mobile);
+                if (userOpt.isPresent()) {
+                    exists = true;
+                    user = userOpt.get();
+                    System.out.println("User found by mobile: " + mobile + ", ID: " + user.getId());
+                } else {
+                    System.out.println("User NOT found by mobile: " + mobile);
+                }
             }
             
-            if (exists) {
-                resp.put("exists", true);
-                resp.put("message", "User found");
-                resp.put("user", Map.of(
-                    "id", user.getId(),
-                    "firstName", user.getFirstName(),
-                    "lastName", user.getLastName(),
-                    "gstNumber", user.getGstNumber(),
-                    "mobile", user.getMobile()
-                ));
-            } else {
-                resp.put("exists", false);
-                resp.put("message", "User not found");
+            // Check by GST if mobile not found and GST is provided
+            if (!exists && gstNumber != null && !gstNumber.trim().isEmpty()) {
+                gstNumber = gstNumber.trim().toUpperCase();
+                Optional<User> userOpt = userRepository.findByGstNumber(gstNumber);
+                if (userOpt.isPresent()) {
+                    exists = true;
+                    user = userOpt.get();
+                    System.out.println("User found by GST: " + gstNumber + ", ID: " + user.getId());
+                } else {
+                    System.out.println("User NOT found by GST: " + gstNumber);
+                }
+            }
+            
+            resp.put("exists", exists);
+            
+            // Optionally return user data if found
+            if (exists && user != null) {
+                Map<String, Object> userData = new HashMap<>();
+                userData.put("id", user.getId());
+                userData.put("mobile", user.getMobile() != null ? user.getMobile() : "");
+                userData.put("gstNumber", user.getGstNumber() != null ? user.getGstNumber() : "");
+                userData.put("firstName", user.getFirstName() != null ? user.getFirstName() : "");
+                userData.put("lastName", user.getLastName() != null ? user.getLastName() : "");
+                resp.put("user", userData);
             }
             
             return ResponseEntity.ok(resp);
             
         } catch (Exception e) {
+            e.printStackTrace();
             resp.put("exists", false);
-            resp.put("error", "Error checking user existence");
+            resp.put("error", "Error checking user: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
         }
     }
@@ -420,35 +502,81 @@ public class Controller {
     }
     
     @PostMapping("/login")
-    public Map<String, Object> login(@RequestBody LoginRequest req) {
+    public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest req) {
         Map<String, Object> resp = new HashMap<>();
-        Optional<User> userOpt = Optional.empty();
         
-        if (req.mobile != null && !req.mobile.isEmpty()) {
-            userOpt = userRepository.findByMobile(req.mobile);
-        } else if (req.gstNumber != null && !req.gstNumber.isEmpty()) {
-            userOpt = userRepository.findByGstNumber(req.gstNumber.toUpperCase());
-        }
-        
-        if (userOpt.isPresent() && passwordEncoder.matches(req.password, userOpt.get().getPasswordHash())) {
-            User user = userOpt.get();
-            resp.put("success", true);
-            resp.put("userId", user.getId());
-            resp.put("status", user.getStatus()); 
-            resp.put("isAdmin", "admin@sainistores.com".equalsIgnoreCase(user.getGstNumber()));
+        try {
+            // Validate input
+            if ((req.mobile == null || req.mobile.trim().isEmpty()) && 
+                (req.gstNumber == null || req.gstNumber.trim().isEmpty())) {
+                resp.put("success", false);
+                resp.put("error", "Mobile number or GST number is required");
+                return ResponseEntity.badRequest().body(resp);
+            }
             
-            resp.put("userName", user.getGstNumber() != null ? user.getGstNumber() : user.getMobile());
-            resp.put("user", Map.of(
-                "id", user.getId(),
-                "gstNumber", user.getGstNumber(),
-                "mobile", user.getMobile(),
-                "name", user.getGstNumber() != null ? user.getGstNumber() : user.getMobile()
-            ));
-        } else {
+            if (req.password == null || req.password.isEmpty()) {
+                resp.put("success", false);
+                resp.put("error", "Password is required");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            // Find user by mobile or GST
+            User user = null;
+            if (req.mobile != null && !req.mobile.trim().isEmpty()) {
+                user = userRepository.findByMobile(req.mobile.trim()).orElse(null);
+            } else if (req.gstNumber != null && !req.gstNumber.trim().isEmpty()) {
+                user = userRepository.findByGstNumber(req.gstNumber.trim().toUpperCase()).orElse(null);
+            }
+            
+            if (user == null) {
+                resp.put("success", false);
+                resp.put("error", "Invalid credentials");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            // Verify password
+            if (!passwordEncoder.matches(req.password, user.getPasswordHash())) {
+                resp.put("success", false);
+                resp.put("error", "Invalid credentials");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            // Generate token (use your existing JWT service or simple token)
+            String token = "authenticated";  // Replace with your JWT token generation
+            
+            // Build user response - handle null values properly
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("id", user.getId());
+            userData.put("firstName", user.getFirstName() != null ? user.getFirstName() : "");
+            userData.put("lastName", user.getLastName() != null ? user.getLastName() : "");
+            userData.put("gstNumber", user.getGstNumber() != null ? user.getGstNumber() : "");
+            userData.put("mobile", user.getMobile() != null ? user.getMobile() : "");
+            userData.put("status", user.getStatus() != null ? user.getStatus().toString() : "PENDING");
+            userData.put("isApproved", user.getStatus() != null && user.getStatus() == Status.APPROVED);
+            userData.put("approved", user.getStatus() != null && user.getStatus() == Status.APPROVED);
+            
+            // Handle dates
+            if (user.getCreatedAt() != null) {
+                userData.put("createdAt", user.getCreatedAt().toString());
+                userData.put("registrationDate", user.getCreatedAt().toString());
+            } else {
+                userData.put("createdAt", "");
+                userData.put("registrationDate", "");
+            }
+            
+            // Build response
+            resp.put("success", true);
+            resp.put("token", token);
+            resp.put("user", userData);
+            
+            return ResponseEntity.ok(resp);
+            
+        } catch (Exception e) {
+            e.printStackTrace();
             resp.put("success", false);
-            resp.put("error", "Invalid credentials");
+            resp.put("error", "Login failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
         }
-        return resp;
     }
     
 //    @PostMapping("/verify-otp")
@@ -1296,5 +1424,122 @@ public class Controller {
 //            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
 //        }
 //    }
+    @PostMapping("/login-otp")
+    public ResponseEntity<Map<String, Object>> loginWithOTP(@RequestBody Map<String, String> request) {
+        Map<String, Object> resp = new HashMap<>();
+        
+        try {
+            String mobile = request.get("mobile");
+            String otp = request.get("otp");
+            
+            // Validate input
+            if (mobile == null || mobile.trim().isEmpty()) {
+                resp.put("success", false);
+                resp.put("error", "Mobile number is required");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            if (otp == null || otp.trim().isEmpty()) {
+                resp.put("success", false);
+                resp.put("error", "OTP is required");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            mobile = mobile.trim();
+            otp = otp.trim();
+            
+            // Validate mobile format
+            if (!mobile.matches("^[0-9]{10}$")) {
+                resp.put("success", false);
+                resp.put("error", "Invalid mobile number format. Must be 10 digits.");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            // Build OTP key (same as your buildOtpKey method for login type)
+            String key = "login_M_" + mobile;
+            
+            // Verify OTP
+            String storedOtp = otpStore.get(key);
+            Long expiryTime = otpExpiry.get(key);
+            
+            if (storedOtp == null || expiryTime == null) {
+                System.out.println("OTP not found. Key: " + key);
+                System.out.println("Available keys: " + otpStore.keySet());
+                resp.put("success", false);
+                resp.put("error", "OTP not found or expired. Please request a new OTP.");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            if (System.currentTimeMillis() > expiryTime) {
+                otpStore.remove(key);
+                otpExpiry.remove(key);
+                resp.put("success", false);
+                resp.put("error", "OTP has expired. Please request a new OTP.");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            if (!storedOtp.trim().equals(otp.trim())) {
+                resp.put("success", false);
+                resp.put("error", "Invalid OTP. Please try again.");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            // OTP verified - clean up
+            otpStore.remove(key);
+            otpExpiry.remove(key);
+            
+            // Find user by mobile
+            Optional<User> userOpt = userRepository.findByMobile(mobile);
+            if (!userOpt.isPresent()) {
+                System.out.println("User not found for mobile: " + mobile);
+                resp.put("success", false);
+                resp.put("error", "User not found");
+                return ResponseEntity.badRequest().body(resp);
+            }
+            
+            User user = userOpt.get();
+            System.out.println("User found: " + user.getMobile() + ", ID: " + user.getId());
+            
+            // Generate token (use your existing JWT service or simple token)
+            String token = "authenticated";  // Replace with your JWT token generation
+            // OR: String token = jwtTokenProvider.generateToken(user.getMobile());
+            
+            // Build user response - handle null values properly
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("id", user.getId());
+            userData.put("mobile", user.getMobile() != null ? user.getMobile() : "");
+            userData.put("gstNumber", user.getGstNumber() != null ? user.getGstNumber() : "");
+            userData.put("firstName", user.getFirstName() != null ? user.getFirstName() : "");
+            userData.put("lastName", user.getLastName() != null ? user.getLastName() : "");
+            userData.put("name", (user.getFirstName() + " " + user.getLastName()).trim());
+            userData.put("status", user.getStatus() != null ? user.getStatus().toString() : "PENDING");
+            userData.put("isApproved", user.getStatus() != null && user.getStatus() == Status.APPROVED);
+            userData.put("approved", user.getStatus() != null && user.getStatus() == Status.APPROVED);
+            
+            // Handle dates
+            if (user.getCreatedAt() != null) {
+                userData.put("registrationDate", user.getCreatedAt().toString());
+                userData.put("createdAt", user.getCreatedAt().toString());
+            } else {
+                userData.put("registrationDate", "");
+                userData.put("createdAt", "");
+            }
+            
+            // Return success response
+            resp.put("success", true);
+            resp.put("token", token);
+            resp.put("user", userData);
+            
+            System.out.println("Login-OTP successful for user: " + user.getMobile());
+            return ResponseEntity.ok(resp);
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            resp.put("success", false);
+            resp.put("error", "Login failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
+        }
+    }
+    
 //
 }
