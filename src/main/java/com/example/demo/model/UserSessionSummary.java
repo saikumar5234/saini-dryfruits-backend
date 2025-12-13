@@ -15,7 +15,7 @@ public class UserSessionSummary {
     @Column(name = "user_id", nullable = false, unique = true)
     private String userId;
     
-    @Column(name = "user_gst_number", length = 15)
+    @Column(name = "user_gst_number", length = 15, nullable = true)
     private String userGstNumber;
     
     @Column(name = "user_mobile")
