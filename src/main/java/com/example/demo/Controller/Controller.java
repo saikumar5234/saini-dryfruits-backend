@@ -13,6 +13,7 @@ import com.example.demo.dto.CreateProductRequest;
 import com.example.demo.dto.LoginRequest;
 import com.example.demo.dto.ProductResponseDTO;
 import com.example.demo.dto.SignupRequest;
+import com.example.demo.dto.UpdateProfileRequest;
 import com.example.demo.Repository.ProductImageRepository;
 import com.example.demo.Repository.ProductPriceHistoryRepository;
 import com.example.demo.model.AdminSignupRequest;
@@ -28,9 +29,11 @@ import com.example.demo.services.AdminLoginService;
 import com.example.demo.services.AdminSignupRequestService;
 import com.example.demo.services.BannerTextService;
 import com.example.demo.services.SmsService;
+import com.example.demo.services.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -63,6 +66,8 @@ public class Controller {
 	    private AdminLoginService adminLoginService;
 	 @Autowired
 	    private BannerTextService bannerTextService;
+	 @Autowired
+	    private UserService userService;
 
 
 	private static final Pattern GST_PATTERN = Pattern.compile("^[0-9A-Z]{15}$");
@@ -576,6 +581,88 @@ public class Controller {
             resp.put("success", false);
             resp.put("error", "Login failed: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
+        }
+    }
+    @PostMapping("/update-profile")
+    public ResponseEntity<Map<String, Object>> updateProfile(
+            @Valid @RequestBody UpdateProfileRequest request) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // Validate that at least one identifier is provided
+            if ((request.getMobile() == null || request.getMobile().isEmpty()) &&
+                (request.getGstNumber() == null || request.getGstNumber().isEmpty())) {
+                response.put("success", false);
+                response.put("error", "Either mobile number or GST number is required for identification");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            // Find user by mobile or GST
+            Optional<User> userOptional = Optional.empty();
+            
+            if (request.getMobile() != null && !request.getMobile().isEmpty()) {
+                userOptional = userService.findByMobile(request.getMobile());
+            } else if (request.getGstNumber() != null && !request.getGstNumber().isEmpty()) {
+                userOptional = userService.findByGstNumber(request.getGstNumber());
+            }
+            
+            if (userOptional.isEmpty()) {
+                response.put("success", false);
+                response.put("error", "User not found");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+            
+            User user = userOptional.get();
+            
+            // Update first name and last name
+            user.setFirstName(request.getFirstName());
+            user.setLastName(request.getLastName());
+            
+            // Update GST number if provided
+            if (request.getNewGstNumber() != null && !request.getNewGstNumber().isEmpty()) {
+                // Check if the new GST number is different from current
+                if (user.getGstNumber() != null && 
+                    user.getGstNumber().equalsIgnoreCase(request.getNewGstNumber())) {
+                    // Same GST number, no need to check for duplicates
+                } else {
+                    // Check if new GST number already exists (if different from current)
+                    Optional<User> existingUser = userService.findByGstNumber(request.getNewGstNumber());
+                    if (existingUser.isPresent() && !existingUser.get().getId().equals(user.getId())) {
+                        response.put("success", false);
+                        response.put("error", "GST number already exists");
+                        return ResponseEntity.badRequest().body(response);
+                    }
+                }
+                user.setGstNumber(request.getNewGstNumber());
+            }
+            
+            // Save updated user
+            User updatedUser = userService.save(user);
+            
+            // Build response
+            response.put("success", true);
+            response.put("message", "Profile updated successfully");
+            
+            // Include updated user data
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("id", updatedUser.getId());
+            userData.put("firstName", updatedUser.getFirstName());
+            userData.put("lastName", updatedUser.getLastName());
+            userData.put("mobile", updatedUser.getMobile());
+            userData.put("gstNumber", updatedUser.getGstNumber());
+//            userData.put("isApproved", updatedUser.getIsApproved());
+//            userData.put("registrationDate", updatedUser.getRegistrationDate());
+            userData.put("createdAt", updatedUser.getCreatedAt());
+            
+            response.put("user", userData);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("error", "Failed to update profile: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
     
