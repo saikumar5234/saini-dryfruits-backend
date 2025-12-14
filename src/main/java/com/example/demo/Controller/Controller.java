@@ -2,9 +2,11 @@ package com.example.demo.Controller;
 
 import com.example.demo.Repository.GreetingRepository;
 import com.example.demo.Repository.ProductRepository;
+import com.example.demo.Repository.SubAdminEmailRepository;
 import com.example.demo.Repository.UserRepository;
 import com.example.demo.Repository.UserSessionRepository;
 import com.example.demo.Repository.UserSessionSummaryRepository;
+import com.example.demo.config.JwtUtil;
 import com.example.demo.dto.AdminLoginDTO;
 import com.example.demo.dto.AdminSignupRequestDTO;
 import com.example.demo.dto.BannerTextRequest;
@@ -22,10 +24,12 @@ import com.example.demo.model.Product;
 import com.example.demo.model.ProductImage;
 import com.example.demo.model.ProductPriceHistory;
 import com.example.demo.model.Status;
+import com.example.demo.model.SubAdminEmail;
 import com.example.demo.model.User;
 import com.example.demo.model.UserSession;
 import com.example.demo.model.UserSessionSummary;
 import com.example.demo.services.AdminLoginService;
+import com.example.demo.services.AdminOtpService;
 import com.example.demo.services.AdminSignupRequestService;
 import com.example.demo.services.BannerTextService;
 import com.example.demo.services.SmsService;
@@ -68,6 +72,15 @@ public class Controller {
 	    private BannerTextService bannerTextService;
 	 @Autowired
 	    private UserService userService;
+	 @Autowired
+	    private AdminOtpService otpService;
+
+	    @Autowired
+	    private JwtUtil jwtUtil;
+	    @Autowired
+	    private SubAdminEmailRepository subAdminEmailRepository;
+
+	    
 
 
 	private static final Pattern GST_PATTERN = Pattern.compile("^[0-9A-Z]{15}$");
@@ -117,7 +130,58 @@ public class Controller {
     	    this.userSessionSummaryRepository = userSessionSummaryRepository;  
     	}
     
+    @PostMapping("/admin/send-otp")
+    public Map<String, String> sendOtp(@RequestParam String email) {
+        otpService.sendOtp(email);
+        return Map.of("message", "OTP sent successfully");
+    }
+
+    @PostMapping("/admin/verify-otp")
+    public Map<String, Object> verifyOtp(
+            @RequestParam String email,
+            @RequestParam String mobile,
+            @RequestParam String otp
+    ) {
+        AdminSignupRequest admin = otpService.verifyOtp(email, mobile, otp);
+        String token = jwtUtil.generateToken(admin.getEmail(), admin.getRole());
+
+        return Map.of(
+                "token", token,
+                "email", admin.getEmail(),
+                "role", admin.getRole()
+        );
+    }
     
+    @PostMapping("/admin/sub-admins")
+    public Map<String, Object> createSubAdminEmail(@RequestBody Map<String, String> req) {
+
+        String email = req.get("email");
+
+        if (email == null || email.trim().isEmpty()) {
+            throw new RuntimeException("Email is required");
+        }
+
+        subAdminEmailRepository.findByEmail(email).ifPresent(e -> {
+            throw new RuntimeException("Email already exists");
+        });
+
+        SubAdminEmail sub = new SubAdminEmail();
+        sub.setEmail(email.trim().toLowerCase());
+
+        subAdminEmailRepository.save(sub);
+
+        return Map.of(
+                "success", true,
+                "email", email,
+                "message", "Sub-admin email created successfully"
+        );
+    }
+
+    // LIST SUB-ADMIN EMAILS
+    @GetMapping("/admin/sub-admins")
+    public Object listSubAdminEmails() {
+        return subAdminEmailRepository.findAll();
+    }
     @GetMapping("/banner-text")
     public ResponseEntity<BannerTextResponse> getBannerText() {
         try {
