@@ -49,4 +49,13 @@ public class ProductResponseDTO {
     private Map<String, String> description;
     private Double price;
     private List<Long> imageIds;
+    private boolean disabled;   // JSON field: "disabled"
+
+    public boolean isDisabled() {
+        return disabled;
+    }
+
+    public void setDisabled(boolean disabled) {
+        this.disabled = disabled;
+    }
 }

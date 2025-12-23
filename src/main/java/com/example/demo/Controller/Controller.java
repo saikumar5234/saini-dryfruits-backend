@@ -14,6 +14,7 @@ import com.example.demo.dto.BannerTextResponse;
 import com.example.demo.dto.CreateProductRequest;
 import com.example.demo.dto.LoginRequest;
 import com.example.demo.dto.ProductResponseDTO;
+import com.example.demo.dto.ProductUpdateRequest;
 import com.example.demo.dto.SignupRequest;
 import com.example.demo.dto.UpdateProfileRequest;
 import com.example.demo.Repository.ProductImageRepository;
@@ -34,6 +35,7 @@ import com.example.demo.services.AdminSignupRequestService;
 import com.example.demo.services.BannerTextService;
 import com.example.demo.services.SmsService;
 import com.example.demo.services.UserService;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.transaction.Transactional;
@@ -185,39 +187,80 @@ public class Controller {
     @GetMapping("/banner-text")
     public ResponseEntity<BannerTextResponse> getBannerText() {
         try {
-            String text = bannerTextService.getActiveBannerText();
+            String textJson = bannerTextService.getActiveBannerText();
             
             BannerTextResponse response = new BannerTextResponse();
             response.setSuccess(true);
-            response.setText(text);
+            
+            // Parse JSON string to Map
+            Map<String, String> textMap = parseJsonToMap(textJson);
+            response.setText(textMap);
             response.setMessage("Banner text retrieved successfully");
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             BannerTextResponse response = new BannerTextResponse();
             response.setSuccess(false);
-            response.setText("Welcome to Saini Mewa Stores - Your trusted source for premium dry fruits! 🥜✨");
+            
+            // Default multilingual text
+            Map<String, String> defaultText = new HashMap<>();
+            defaultText.put("en", "Welcome to Saini Mewa Stores - Your trusted source for premium dry fruits! 🥜✨");
+            defaultText.put("hi", "सैनी मेवा स्टोर्स में आपका स्वागत है - प्रीमियम सूखे मेवों का आपका विश्वसनीय स्रोत! 🥜✨");
+            defaultText.put("te", "సైని మేవా స్టోర్‌లకు స్వాగతం - ప్రీమియం ఎండిన పండ్లకు మీ విశ్వసనీయ మూలం! 🥜✨");
+            
+            response.setText(defaultText);
             response.setMessage("Error retrieving banner text: " + e.getMessage());
             
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    // Helper method to parse JSON string to Map
+    private Map<String, String> parseJsonToMap(String jsonString) {
+        if (jsonString == null || jsonString.trim().isEmpty()) {
+            return new HashMap<>();
+        }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(jsonString, new TypeReference<Map<String, String>>() {});
+        } catch (Exception e) {
+            // If parsing fails, return empty map or default
+            Map<String, String> defaultMap = new HashMap<>();
+            defaultMap.put("en", jsonString); // Fallback to original string as English
+            return defaultMap;
         }
     }
     
     @PostMapping("/banner-text")
     public ResponseEntity<BannerTextResponse> createOrUpdateBannerText(@RequestBody BannerTextRequest request) {
         try {
-            if (request.getText() == null || request.getText().trim().isEmpty()) {
+            // Validate multilingual text
+            Map<String, String> textMap = request.getText();
+            if (textMap == null || textMap.isEmpty()) {
                 BannerTextResponse response = new BannerTextResponse();
                 response.setSuccess(false);
                 response.setMessage("Text cannot be empty");
                 return ResponseEntity.badRequest().body(response);
             }
             
-            bannerTextService.createOrUpdateBannerText(request.getText());
+            // Validate that at least English text is provided
+            String englishText = textMap.get("en");
+            if (englishText == null || englishText.trim().isEmpty()) {
+                BannerTextResponse response = new BannerTextResponse();
+                response.setSuccess(false);
+                response.setMessage("English text (en) is required");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            // Convert Map to JSON string
+            String textJson = request.getTextJsonString();
+            
+            // Create or update banner text
+            bannerTextService.createOrUpdateBannerText(textJson, request.getIsActive());
             
             BannerTextResponse response = new BannerTextResponse();
             response.setSuccess(true);
-            response.setText(request.getText());
+            response.setText(textMap); // Return multilingual map
             response.setMessage("Banner text updated successfully");
             
             return ResponseEntity.ok(response);
@@ -798,7 +841,48 @@ public class Controller {
         userRepository.save(user);
         return ResponseEntity.ok(Map.of("message", "User rejected"));
     }
+    @PutMapping("/products/{id}")
+    public ResponseEntity<Product> updateProduct(
+            @PathVariable Long id,
+            @RequestBody ProductUpdateRequest request) {
+
+        Optional<Product> optionalProduct = productRepository.findById(id);
+        if (optionalProduct.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Product product = optionalProduct.get();
+
+        // Update fields (only these three)
+        product.setName(request.getNameJson());
+        product.setDescription(request.getDescriptionJson());
+        product.setCategory(request.getCategory());
+
+        Product updated = productRepository.save(product);
+        return ResponseEntity.ok(updated);
+    }
     
+    @PutMapping("/products/{id}/disable")
+    public ResponseEntity<Product> disableProduct(@PathVariable Long id) {
+        return productRepository.findById(id)
+            .map(product -> {
+                product.setDisabled(true);
+                Product saved = productRepository.save(product);
+                return ResponseEntity.ok(saved);
+            })
+            .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/products/{id}/enable")
+    public ResponseEntity<Product> enableProduct(@PathVariable Long id) {
+        return productRepository.findById(id)
+            .map(product -> {
+                product.setDisabled(false);
+                Product saved = productRepository.save(product);
+                return ResponseEntity.ok(saved);
+            })
+            .orElseGet(() -> ResponseEntity.notFound().build());
+    }
 
 
     
@@ -891,19 +975,20 @@ public class Controller {
             dto.setId(p.getId());
             dto.setCategory(p.getCategory());
             dto.setPrice(p.getPrice());
-            
+            dto.setDisabled(p.isDisabled());   // <-- send status
+
             try {
                 dto.setName(objectMapper.readValue(p.getName(), Map.class));
                 dto.setDescription(objectMapper.readValue(p.getDescription(), Map.class));
             } catch (Exception e) {
-               
+                // handle if needed
             }
-            
+
             List<Long> imageIds = p.getImages().stream()
                 .map(ProductImage::getId)
                 .collect(Collectors.toList());
             dto.setImageIds(imageIds);
-            
+
             result.add(dto);
         }
 
@@ -958,6 +1043,11 @@ public class Controller {
     public ResponseEntity<?> deleteProductImage(@PathVariable Long imageId) {
         productImageRepository.deleteById(imageId);
         return ResponseEntity.ok().build();
+    }
+    @DeleteMapping("/delete/all/products")
+    public ResponseEntity<Void> deleteAllProducts() {
+        productRepository.deleteAll();
+        return ResponseEntity.noContent().build(); // 204
     }
     
     @DeleteMapping("/products/{id}")

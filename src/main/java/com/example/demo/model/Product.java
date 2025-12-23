@@ -20,7 +20,9 @@ public class Product {
     private Long id;
 
     private String category;
-    
+    @Column(name = "is_disable", nullable = false)
+    private boolean isDisabled = false;
+
     
     @Column(columnDefinition = "TEXT")
     private String nameJson; 
@@ -117,4 +119,12 @@ public class Product {
 	public void setImages(List<ProductImage> images) {
 		this.images = images;
 	}
+	
+	 public boolean isDisabled() {
+	        return isDisabled;
+	    }
+
+	    public void setDisabled(boolean disabled) {
+	        isDisabled = disabled;
+	    }
 }

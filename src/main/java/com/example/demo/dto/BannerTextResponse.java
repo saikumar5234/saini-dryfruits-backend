@@ -1,18 +1,12 @@
 package com.example.demo.dto;
 
+import java.util.Map;
+
 public class BannerTextResponse {
     private boolean success;
-    private String text;
     private String message;
-    
-    public BannerTextResponse() {
-    }
-    
-    public BannerTextResponse(boolean success, String text, String message) {
-        this.success = success;
-        this.text = text;
-        this.message = message;
-    }
+    private Map<String, String> text; // Multilingual text
+    private Boolean isActive;
     
     // Getters and Setters
     public boolean isSuccess() {
@@ -23,19 +17,27 @@ public class BannerTextResponse {
         this.success = success;
     }
     
-    public String getText() {
-        return text;
-    }
-    
-    public void setText(String text) {
-        this.text = text;
-    }
-    
     public String getMessage() {
         return message;
     }
     
     public void setMessage(String message) {
         this.message = message;
+    }
+    
+    public Map<String, String> getText() {
+        return text;
+    }
+    
+    public void setText(Map<String, String> text) {
+        this.text = text;
+    }
+    
+    public Boolean getIsActive() {
+        return isActive;
+    }
+    
+    public void setIsActive(Boolean isActive) {
+        this.isActive = isActive;
     }
 }

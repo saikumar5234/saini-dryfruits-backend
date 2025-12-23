@@ -1,7 +1,9 @@
 package com.example.demo.model;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "banner_text")
@@ -11,8 +13,8 @@ public class BannerText {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "text", columnDefinition = "TEXT", nullable = false)
-    private String text;
+    @Column(name = "text_json", columnDefinition = "TEXT", nullable = false)
+    private String textJson;
     
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
@@ -34,6 +36,39 @@ public class BannerText {
         updatedAt = LocalDateTime.now();
     }
     
+    // JSON property for API responses (parsed from textJson)
+    @JsonProperty("text")
+    public String getText() {
+        return textJson;
+    }
+
+    public void setText(String text) {
+        this.textJson = text;
+    }
+    
+    // Getter and setter for textJson
+    public String getTextJson() {
+        return textJson;
+    }
+
+    public void setTextJson(String textJson) {
+        this.textJson = textJson;
+    }
+    
+    // Multilingual text handling methods
+    public void setTextMultilingual(Map<String, String> textMap) {
+        this.textJson = convertMapToJson(textMap);
+    }
+
+    private String convertMapToJson(Map<String, String> map) {
+        if (map == null || map.isEmpty()) return "{}";
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(map);
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+    
     // Getters and Setters
     public Long getId() {
         return id;
@@ -41,14 +76,6 @@ public class BannerText {
     
     public void setId(Long id) {
         this.id = id;
-    }
-    
-    public String getText() {
-        return text;
-    }
-    
-    public void setText(String text) {
-        this.text = text;
     }
     
     public Boolean getIsActive() {
