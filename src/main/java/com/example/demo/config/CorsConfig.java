@@ -18,7 +18,6 @@ public class CorsConfig {
 
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:5173",
-            "https://saini-dry-fruits-test.vercel.app",
             "https://*.vercel.app"
         ));
 
