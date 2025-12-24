@@ -16,23 +16,23 @@ public class CorsConfig {
 
         CorsConfiguration config = new CorsConfiguration();
 
+        // Allow localhost + ALL vercel deployments
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:5173",
             "https://*.vercel.app"
         ));
 
         config.setAllowedMethods(List.of(
-                "GET", "POST", "PUT", "DELETE", "OPTIONS"
+            "GET", "POST", "PUT", "DELETE", "OPTIONS"
         ));
 
-        config.setAllowedHeaders(List.of(
-                "Authorization", "Content-Type"
-        ));
+        config.setAllowedHeaders(List.of("*"));
 
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", config);
 
         return source;
