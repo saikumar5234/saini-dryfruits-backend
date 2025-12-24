@@ -13,10 +13,8 @@ public class CorsConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-
         CorsConfiguration config = new CorsConfiguration();
 
-        // Allow localhost + ALL vercel deployments
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:5173",
             "https://*.vercel.app"
@@ -28,11 +26,14 @@ public class CorsConfig {
 
         config.setAllowedHeaders(List.of("*"));
 
+        config.setExposedHeaders(List.of(
+            "Authorization"
+        ));
+
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
-
         source.registerCorsConfiguration("/**", config);
 
         return source;
