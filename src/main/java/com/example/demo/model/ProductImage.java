@@ -6,10 +6,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Table(name = "product_image")
 public class ProductImage {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -18,31 +17,28 @@ public class ProductImage {
     @Column(columnDefinition = "LONGBLOB")
     private byte[] image;
 
-    public Long getId() {
-		return id;
-	}
-
-	public void setId(Long id) {
-		this.id = id;
-	}
-
-	public byte[] getImage() {
-		return image;
-	}
-
-	public void setImage(byte[] image) {
-		this.image = image;
-	}
-
-	public Product getProduct() {
-		return product;
-	}
-
-	public void setProduct(Product product) {
-		this.product = product;
-	}
-
-	@ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id")
     private Product product;
+
+    // getters & setters
+    public Long getId() {
+        return id;
+    }
+
+    public byte[] getImage() {
+        return image;
+    }
+
+    public Product getProduct() {
+        return product;
+    }
+
+    public void setImage(byte[] image) {
+        this.image = image;
+    }
+
+    public void setProduct(Product product) {
+        this.product = product;
+    }
 }

@@ -854,8 +854,8 @@ public class Controller {
         Product product = optionalProduct.get();
 
         // Update fields (only these three)
-        product.setName(request.getNameJson());
-        product.setDescription(request.getDescriptionJson());
+        product.setNameJson(request.getNameJson());
+        product.setDescriptionJson(request.getDescriptionJson());
         product.setCategory(request.getCategory());
 
         Product updated = productRepository.save(product);
@@ -953,41 +953,68 @@ public class Controller {
 
     @PostMapping("/products")
     public Product createProduct(@RequestBody CreateProductRequest request) {
+
         Product product = new Product();
         product.setCategory(request.getCategory());
-        product.setNameMultilingual(request.getName());
-        product.setDescriptionMultilingual(request.getDescription());
         product.setPrice(request.getPrice());
-        
+
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        try {
+            // Convert Map -> JSON String
+            product.setNameJson(
+                objectMapper.writeValueAsString(request.getName())
+            );
+
+            product.setDescriptionJson(
+                objectMapper.writeValueAsString(request.getDescription())
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid name/description JSON");
+        }
+
         return productRepository.save(product);
     }
 
 
 
+
     @GetMapping("/products")
     public List<ProductResponseDTO> getAllProducts() {
+
         List<Product> products = productRepository.findAll();
         List<ProductResponseDTO> result = new ArrayList<>();
+
         ObjectMapper objectMapper = new ObjectMapper();
 
         for (Product p : products) {
+
             ProductResponseDTO dto = new ProductResponseDTO();
             dto.setId(p.getId());
             dto.setCategory(p.getCategory());
             dto.setPrice(p.getPrice());
-            dto.setDisabled(p.isDisabled());   // <-- send status
+            dto.setDisabled(p.isDisabled());
 
             try {
-                dto.setName(objectMapper.readValue(p.getName(), Map.class));
-                dto.setDescription(objectMapper.readValue(p.getDescription(), Map.class));
+                dto.setName(
+                    objectMapper.readValue(
+                        p.getNameJson(), new TypeReference<Map<String, String>>() {}
+                    )
+                );
+                dto.setDescription(
+                    objectMapper.readValue(
+                        p.getDescriptionJson(), new TypeReference<Map<String, String>>() {}
+                    )
+                );
             } catch (Exception e) {
-                // handle if needed
+                dto.setName(Map.of());
+                dto.setDescription(Map.of());
             }
 
-            List<Long> imageIds = p.getImages().stream()
-                .map(ProductImage::getId)
-                .collect(Collectors.toList());
-            dto.setImageIds(imageIds);
+            // ✅ SAFE: no lazy loading, no N+1
+            dto.setImageIds(
+                productImageRepository.findImageIdsByProductId(p.getId())
+            );
 
             result.add(dto);
         }
@@ -996,28 +1023,31 @@ public class Controller {
     }
 
 
-    @PostMapping(value = "/products/{productId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Map<String, Object> uploadProductImage(
-            @PathVariable Long productId,
-            @RequestParam("image") MultipartFile imageFile
-    ) throws Exception {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
 
-        ProductImage productImage = new ProductImage();
-        productImage.setImage(imageFile.getBytes());
-        productImage.setProduct(product);
 
-        productImage = productImageRepository.save(productImage);
+    @PostMapping(
+    	    value = "/products/{productId}/images",
+    	    consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    	)
+    	public Map<String, Object> uploadProductImage(
+    	        @PathVariable Long productId,
+    	        @RequestParam("image") MultipartFile imageFile
+    	) throws Exception {
 
-       
-        product.getImages().add(productImage);
-        productRepository.save(product);
+    	    Product product = productRepository.findById(productId)
+    	            .orElseThrow(() -> new RuntimeException("Product not found"));
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("imageId", productImage.getId());
-        return response;
-    }
+    	    ProductImage productImage = new ProductImage();
+    	    productImage.setImage(imageFile.getBytes());
+    	    productImage.setProduct(product);
+
+    	    productImageRepository.save(productImage);
+
+    	    Map<String, Object> response = new HashMap<>();
+    	    response.put("imageId", productImage.getId());
+    	    return response;
+    	}
+
 
 
     @GetMapping("/products/image/{imageId}")
@@ -1031,12 +1061,14 @@ public class Controller {
     }
     @GetMapping("/products/{productId}/images")
     public List<Long> getProductImageIds(@PathVariable Long productId) {
-        Product product = productRepository.findById(productId)
-            .orElseThrow(() -> new RuntimeException("Product not found"));
-        return product.getImages().stream()
-            .map(ProductImage::getId)
-            .toList();
+
+        if (!productRepository.existsById(productId)) {
+            throw new RuntimeException("Product not found");
+        }
+
+        return productImageRepository.findImageIdsByProductId(productId);
     }
+
 
 
     @DeleteMapping("/products/image/{imageId}")
