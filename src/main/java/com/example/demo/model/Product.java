@@ -27,6 +27,7 @@ public class Product {
     private String descriptionJson;
 
     private Double price;
+    
 
     // getters & setters
     public Long getId() { return id; }

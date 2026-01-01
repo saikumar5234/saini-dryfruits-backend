@@ -12,14 +12,17 @@ import com.example.demo.dto.AdminSignupRequestDTO;
 import com.example.demo.dto.BannerTextRequest;
 import com.example.demo.dto.BannerTextResponse;
 import com.example.demo.dto.CreateProductRequest;
+import com.example.demo.dto.ErrorResponse;
 import com.example.demo.dto.LoginRequest;
 import com.example.demo.dto.ProductResponseDTO;
 import com.example.demo.dto.ProductUpdateRequest;
 import com.example.demo.dto.SignupRequest;
+import com.example.demo.dto.SuccessResponse;
 import com.example.demo.dto.UpdateProfileRequest;
 import com.example.demo.Repository.ProductImageRepository;
 import com.example.demo.Repository.ProductPriceHistoryRepository;
 import com.example.demo.model.AdminSignupRequest;
+import com.example.demo.model.CategoryRequest;
 import com.example.demo.model.Greeting;
 import com.example.demo.model.Product;
 import com.example.demo.model.ProductImage;
@@ -33,10 +36,14 @@ import com.example.demo.services.AdminLoginService;
 import com.example.demo.services.AdminOtpService;
 import com.example.demo.services.AdminSignupRequestService;
 import com.example.demo.services.BannerTextService;
+import com.example.demo.services.CategoryService;
 import com.example.demo.services.SmsService;
 import com.example.demo.services.UserService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sainidryfruits.exception.CategoryAlreadyExistsException;
+import com.sainidryfruits.exception.CategoryInUseException;
+import com.sainidryfruits.exception.CategoryNotFoundException;
 
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -54,6 +61,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Locale.Category;
 import java.util.stream.Collectors;
 //Add these imports at the top if not already present
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,6 +89,8 @@ public class Controller {
 	    private JwtUtil jwtUtil;
 	    @Autowired
 	    private SubAdminEmailRepository subAdminEmailRepository;
+	    @Autowired
+	    private CategoryService categoryService;
 
 	    
 
@@ -131,6 +141,109 @@ public class Controller {
     	    this.userSessionRepository = userSessionRepository;          
     	    this.userSessionSummaryRepository = userSessionSummaryRepository;  
     	}
+    
+   
+    
+    @PostMapping("/categories")
+    public ResponseEntity<?> createCategory(@Valid @RequestBody CategoryRequest request) {
+        try {
+            com.example.demo.model.Category category = categoryService.createCategory(request.getName());
+            return ResponseEntity.status(HttpStatus.CREATED).body(category);
+        } catch (CategoryAlreadyExistsException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("Category already exists", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("Invalid input", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Internal server error", "Failed to create category"));
+        }
+    }
+    
+    /**
+     * Get all categories
+     * GET /api/categories
+     */
+    @GetMapping("/categories")
+    public ResponseEntity<List<com.example.demo.model.Category>> getAllCategories() {
+        List<com.example.demo.model.Category> categories = categoryService.getAllCategories();
+        return ResponseEntity.ok(categories);
+    }
+    
+    /**
+     * Get category by ID
+     * GET /api/categories/{id}
+     */
+    @GetMapping("/categories/{id}")
+    public ResponseEntity<?> getCategoryById(@PathVariable Long id) {
+        try {
+            com.example.demo.model.Category category = categoryService.getCategoryById(id);
+            return ResponseEntity.ok(category);
+        } catch (CategoryNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("Category not found", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Internal server error", "Failed to fetch category"));
+        }
+    }
+    
+    /**
+     * Update a category
+     * PUT /api/categories/{id}
+     */
+    @PutMapping("/categories/{id}")
+    public ResponseEntity<?> updateCategory(@PathVariable Long id, 
+                                           @Valid @RequestBody CategoryRequest request) {
+        try {
+            com.example.demo.model.Category category = categoryService.updateCategory(id, request.getName());
+            return ResponseEntity.ok(category);
+        } catch (CategoryNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("Category not found", e.getMessage()));
+        } catch (CategoryAlreadyExistsException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("Category already exists", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("Invalid input", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Internal server error", "Failed to update category"));
+        }
+    }
+    
+    /**
+     * Delete a category
+     * DELETE /api/categories/{id}
+     */
+    @DeleteMapping("/categories/{id}")
+    public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
+        try {
+            categoryService.deleteCategory(id);
+            return ResponseEntity.ok(new SuccessResponse("Category deleted successfully"));
+        } catch (CategoryNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("Category not found", e.getMessage()));
+        } catch (CategoryInUseException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("Cannot delete category", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Internal server error", "Failed to delete category"));
+        }
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     @PostMapping("/admin/send-otp")
     public Map<String, String> sendOtp(@RequestParam String email) {
