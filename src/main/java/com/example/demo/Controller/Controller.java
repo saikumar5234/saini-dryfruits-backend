@@ -27,6 +27,7 @@ import com.example.demo.model.Greeting;
 import com.example.demo.model.Product;
 import com.example.demo.model.ProductImage;
 import com.example.demo.model.ProductPriceHistory;
+import com.example.demo.model.PushToken;
 import com.example.demo.model.Status;
 import com.example.demo.model.SubAdminEmail;
 import com.example.demo.model.User;
@@ -37,6 +38,7 @@ import com.example.demo.services.AdminOtpService;
 import com.example.demo.services.AdminSignupRequestService;
 import com.example.demo.services.BannerTextService;
 import com.example.demo.services.CategoryService;
+import com.example.demo.services.PushTokenService;
 import com.example.demo.services.SmsService;
 import com.example.demo.services.UserService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -57,6 +59,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -91,6 +98,8 @@ public class Controller {
 	    private SubAdminEmailRepository subAdminEmailRepository;
 	    @Autowired
 	    private CategoryService categoryService;
+	    @Autowired
+	    private PushTokenService pushTokenService;
 
 	    
 
@@ -143,7 +152,98 @@ public class Controller {
     	}
     
    
+    @PostMapping("/register-push-token")
+    public ResponseEntity<?> registerPushToken(
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+        
+        try {
+            String pushToken = request.get("pushToken");
+            String platform = request.get("platform");
+            String userId = request.get("userId");
+            
+            // Validate input
+            if (pushToken == null || pushToken.trim().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Push token is required"));
+            }
+            
+            if (platform == null || platform.trim().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Platform is required"));
+            }
+            
+            // Get user ID from authentication if not provided in request
+            if (userId == null || userId.trim().isEmpty()) {
+                if (authentication != null && authentication.isAuthenticated()) {
+                    // Extract user ID from authentication (adjust based on your auth implementation)
+                    userId = authentication.getName(); // or get from principal
+                } else {
+                    return ResponseEntity.status(401)
+                        .body(createErrorResponse("User authentication required"));
+                }
+            }
+            
+            // Register or update push token
+            PushToken savedToken = pushTokenService.registerPushToken(
+                pushToken, 
+                platform, 
+                userId
+            );
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Push token registered successfully");
+            response.put("pushToken", savedToken);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                .body(createErrorResponse("Error registering push token: " + e.getMessage()));
+        }
+    }
     
+    /**
+     * Get push tokens for a user
+     * GET /api/push-tokens/{userId}
+     */
+    @GetMapping("/push-tokens/{userId}")
+    public ResponseEntity<?> getUserPushTokens(@PathVariable String userId) {
+        try {
+            return ResponseEntity.ok(pushTokenService.getUserPushTokens(userId));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                .body(createErrorResponse("Error fetching push tokens: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Delete push token
+     * DELETE /api/push-tokens/{tokenId}
+     */
+    @DeleteMapping("/push-tokens/{tokenId}")
+    public ResponseEntity<?> deletePushToken(@PathVariable Long tokenId) {
+        try {
+            pushTokenService.deletePushToken(tokenId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Push token deleted successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                .body(createErrorResponse("Error deleting push token: " + e.getMessage()));
+        }
+    }
+    
+    private Map<String, Object> createErrorResponse(String message) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("success", false);
+        error.put("error", message);
+        return error;
+    }
     @PostMapping("/categories")
     public ResponseEntity<?> createCategory(@Valid @RequestBody CategoryRequest request) {
         try {
@@ -161,20 +261,14 @@ public class Controller {
         }
     }
     
-    /**
-     * Get all categories
-     * GET /api/categories
-     */
+   
     @GetMapping("/categories")
     public ResponseEntity<List<com.example.demo.model.Category>> getAllCategories() {
         List<com.example.demo.model.Category> categories = categoryService.getAllCategories();
         return ResponseEntity.ok(categories);
     }
     
-    /**
-     * Get category by ID
-     * GET /api/categories/{id}
-     */
+    
     @GetMapping("/categories/{id}")
     public ResponseEntity<?> getCategoryById(@PathVariable Long id) {
         try {
@@ -189,10 +283,7 @@ public class Controller {
         }
     }
     
-    /**
-     * Update a category
-     * PUT /api/categories/{id}
-     */
+   
     @PutMapping("/categories/{id}")
     public ResponseEntity<?> updateCategory(@PathVariable Long id, 
                                            @Valid @RequestBody CategoryRequest request) {
@@ -214,10 +305,7 @@ public class Controller {
         }
     }
     
-    /**
-     * Delete a category
-     * DELETE /api/categories/{id}
-     */
+    
     @DeleteMapping("/categories/{id}")
     public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
         try {
@@ -234,16 +322,6 @@ public class Controller {
                 .body(new ErrorResponse("Internal server error", "Failed to delete category"));
         }
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     @PostMapping("/admin/send-otp")
     public Map<String, String> sendOtp(@RequestParam String email) {
@@ -886,59 +964,7 @@ public class Controller {
         }
     }
     
-//    @PostMapping("/verify-otp")
-//    public ResponseEntity<Map<String, Object>> verifyOTP(@RequestBody Map<String, String> request) {
-//        Map<String, Object> resp = new HashMap<>();
-//        
-//        String gstNumber = request.get("gstNumber");
-//        String mobile = request.get("mobile");
-//        String otp = request.get("otp");
-//        
-//        try {
-//            User user = null;
-//            
-//            if (gstNumber != null && !gstNumber.isEmpty()) {
-//                user = userRepository.findByGstNumber(gstNumber.toUpperCase()).orElse(null);
-//            } else if (mobile != null && !mobile.isEmpty()) {
-//                user = userRepository.findByMobile(mobile).orElse(null);
-//            }
-//            
-//            if (user == null) {
-//                resp.put("success", false);
-//                resp.put("error", "User not found");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // TODO: Implement actual OTP verification logic here
-//            // For now, accept any 6-digit OTP for demo purposes
-//            if (otp != null && otp.length() == 6) {
-//                // Update user status to APPROVED after OTP verification
-//                user.setStatus(Status.APPROVED);
-//                userRepository.save(user);
-//                
-//                resp.put("success", true);
-//                resp.put("message", "OTP verified successfully");
-//                resp.put("user", Map.of(
-//                    "id", user.getId(),
-//                    "firstName", user.getFirstName(),
-//                    "lastName", user.getLastName(),
-//                    "gstNumber", user.getGstNumber(),
-//                    "mobile", user.getMobile()
-//                ));
-//            } else {
-//                resp.put("success", false);
-//                resp.put("error", "Invalid OTP");
-//            }
-//            
-//            return ResponseEntity.ok(resp);
-//            
-//        } catch (Exception e) {
-//            resp.put("success", false);
-//            resp.put("error", "OTP verification failed");
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
-//        }
-//    }
-    
+
     @PutMapping("/users/{id}/approve")
     public ResponseEntity<?> approveUser(@PathVariable Long id) {
         User user = userRepository.findById(id).orElseThrow(() -> new RuntimeException("User not found"));
@@ -1021,14 +1047,36 @@ public class Controller {
         return greetingRepository.save(greeting);
     }
     
-    @PutMapping("/products/{id}/price")
-    public Product updateProductPrice(@PathVariable Long id, @RequestBody Map<String, Double> body) {
-        Product product = productRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Product not found"));
-        Double newPrice = body.get("price");
-        product.setPrice(newPrice);
-        productRepository.save(product);
+//    @PutMapping("/products/{id}/price")
+//    public Product updateProductPrice(@PathVariable Long id, @RequestBody Map<String, Double> body) {
+//        Product product = productRepository.findById(id)
+//            .orElseThrow(() -> new RuntimeException("Product not found"));
+//        Double newPrice = body.get("price");
+//        product.setPrice(newPrice);
+//        productRepository.save(product);
+//
+//
+//        ProductPriceHistory history = new ProductPriceHistory();
+//        history.setProduct(product);
+//        history.setPrice(newPrice);
+//        history.setChangedAt(LocalDateTime.now());
+//        priceHistoryRepository.save(history);
+//
+//        return product;
+//    }
 
+    @Transactional
+    @PutMapping("/products/{id}/price")
+    public Product updateProductPrice(@PathVariable Long id,
+                                      @RequestBody Map<String, Double> body) {
+
+        Double newPrice = body.get("price");
+        if (newPrice == null) throw new RuntimeException("price is required");
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        product.setPrice(newPrice);
 
         ProductPriceHistory history = new ProductPriceHistory();
         history.setProduct(product);
@@ -1092,16 +1140,78 @@ public class Controller {
 
 
 
+//    @GetMapping("/products")
+//    public List<ProductResponseDTO> getAllProducts() {
+//
+//        List<Product> products = productRepository.findAll();
+//        List<ProductResponseDTO> result = new ArrayList<>();
+//
+//        ObjectMapper objectMapper = new ObjectMapper();
+//
+//        for (Product p : products) {
+//
+//            ProductResponseDTO dto = new ProductResponseDTO();
+//            dto.setId(p.getId());
+//            dto.setCategory(p.getCategory());
+//            dto.setPrice(p.getPrice());
+//            dto.setDisabled(p.isDisabled());
+//
+//            try {
+//                dto.setName(
+//                    objectMapper.readValue(
+//                        p.getNameJson(), new TypeReference<Map<String, String>>() {}
+//                    )
+//                );
+//                dto.setDescription(
+//                    objectMapper.readValue(
+//                        p.getDescriptionJson(), new TypeReference<Map<String, String>>() {}
+//                    )
+//                );
+//            } catch (Exception e) {
+//                dto.setName(Map.of());
+//                dto.setDescription(Map.of());
+//            }
+//
+//            // ✅ SAFE: no lazy loading, no N+1
+//            dto.setImageIds(
+//                productImageRepository.findImageIdsByProductId(p.getId())
+//            );
+//
+//            result.add(dto);
+//        }
+//
+//        return result;
+//    }
+
+
     @GetMapping("/products")
     public List<ProductResponseDTO> getAllProducts() {
 
         List<Product> products = productRepository.findAll();
+
+        List<Long> productIds = products.stream()
+                .map(Product::getId)
+                .toList();
+
+        // One query to get all mappings (productId -> imageId)
+        Map<Long, List<Long>> imagesMap = new HashMap<>();
+
+        if (!productIds.isEmpty()) {
+            List<Object[]> rows = productImageRepository.findProductIdAndImageIdByProductIds(productIds);
+
+            for (Object[] row : rows) {
+                Long productId = (Long) row[0];
+                Long imageId = (Long) row[1];
+                imagesMap.computeIfAbsent(productId, k -> new ArrayList<>()).add(imageId);
+            }
+        }
+
         List<ProductResponseDTO> result = new ArrayList<>();
 
+        // ✅ Best: inject ObjectMapper as a bean (but keeping yours for now)
         ObjectMapper objectMapper = new ObjectMapper();
 
         for (Product p : products) {
-
             ProductResponseDTO dto = new ProductResponseDTO();
             dto.setId(p.getId());
             dto.setCategory(p.getCategory());
@@ -1109,33 +1219,23 @@ public class Controller {
             dto.setDisabled(p.isDisabled());
 
             try {
-                dto.setName(
-                    objectMapper.readValue(
-                        p.getNameJson(), new TypeReference<Map<String, String>>() {}
-                    )
-                );
-                dto.setDescription(
-                    objectMapper.readValue(
-                        p.getDescriptionJson(), new TypeReference<Map<String, String>>() {}
-                    )
-                );
+                dto.setName(objectMapper.readValue(p.getNameJson(),
+                        new TypeReference<Map<String, String>>() {}));
+                dto.setDescription(objectMapper.readValue(p.getDescriptionJson(),
+                        new TypeReference<Map<String, String>>() {}));
             } catch (Exception e) {
                 dto.setName(Map.of());
                 dto.setDescription(Map.of());
             }
 
-            // ✅ SAFE: no lazy loading, no N+1
-            dto.setImageIds(
-                productImageRepository.findImageIdsByProductId(p.getId())
-            );
+            // ✅ O(1) map lookup, no DB call in loop
+            dto.setImageIds(imagesMap.getOrDefault(p.getId(), List.of()));
 
             result.add(dto);
         }
 
         return result;
     }
-
-
 
 
     @PostMapping(
@@ -1464,11 +1564,7 @@ public class Controller {
     
  
 
-//    // Add this field to store OTPs (in-memory storage - for production use Redis or database)
-//    private final Map<String, String> otpStore = new ConcurrentHashMap<>();
-//    private final Map<String, Long> otpExpiry = new ConcurrentHashMap<>();
-//    private static final long OTP_EXPIRY_TIME = 5 * 60 * 1000; // 5 minutes
-//    private static final String DEFAULT_MOBILE = "9000022066";
+
 //
 //    // ==================== OTP ENDPOINTS FOR SIGNUP ====================
 //
@@ -1641,175 +1737,7 @@ public class Controller {
     }
 //
 //    // ==================== OTP ENDPOINTS FOR FORGOT PASSWORD ====================
-//
-//    @PostMapping("/send-otp-forgot-password")
-//    public ResponseEntity<Map<String, Object>> sendOTPForForgotPassword(@RequestBody Map<String, String> request) {
-//        Map<String, Object> resp = new HashMap<>();
-//        
-//        try {
-//            String email = request.get("email");
-//            String mobile = request.get("mobile");
-//            
-//            if (email == null || email.isEmpty()) {
-//                resp.put("success", false);
-//                resp.put("error", "Email is required");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // Verify user exists
-//            User user = userRepository.findByEmail(email).orElse(null);
-//            if (user == null) {
-//                resp.put("success", false);
-//                resp.put("error", "User not found with this email");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // Generate 6-digit OTP
-//            Random random = new Random();
-//            String otp = String.format("%06d", random.nextInt(999999));
-//            
-//            // Store OTP with expiry (key: email)
-//            String key = "forgot_" + email;
-//            otpStore.put(key, otp);
-//            otpExpiry.put(key, System.currentTimeMillis() + OTP_EXPIRY_TIME);
-//            
-//            // TODO: Send OTP via SMS to default mobile number
-//            // For now, just log it (remove in production)
-//            String targetMobile = mobile != null ? mobile : DEFAULT_MOBILE;
-//            System.out.println("OTP for password reset (" + email + ") to " + targetMobile + ": " + otp);
-//            
-//            resp.put("success", true);
-//            resp.put("message", "OTP sent successfully to " + targetMobile);
-//            // In production, don't send OTP in response
-//            resp.put("otp", otp); // Remove this in production
-//            
-//            return ResponseEntity.ok(resp);
-//            
-//        } catch (Exception e) {
-//            resp.put("success", false);
-//            resp.put("error", "Failed to send OTP: " + e.getMessage());
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
-//        }
-//    }
-//
-//    @PostMapping("/verify-otp-forgot-password")
-//    public ResponseEntity<Map<String, Object>> verifyOTPForForgotPassword(@RequestBody Map<String, String> request) {
-//        Map<String, Object> resp = new HashMap<>();
-//        
-//        try {
-//            String email = request.get("email");
-//            String otp = request.get("otp");
-//            
-//            if (email == null || otp == null) {
-//                resp.put("success", false);
-//                resp.put("error", "Email and OTP are required");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            String key = "forgot_" + email;
-//            String storedOTP = otpStore.get(key);
-//            Long expiryTime = otpExpiry.get(key);
-//            
-//            // Check if OTP exists and not expired
-//            if (storedOTP == null || expiryTime == null) {
-//                resp.put("success", false);
-//                resp.put("error", "OTP not found or expired. Please request a new OTP.");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            if (System.currentTimeMillis() > expiryTime) {
-//                otpStore.remove(key);
-//                otpExpiry.remove(key);
-//                resp.put("success", false);
-//                resp.put("error", "OTP has expired. Please request a new OTP.");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // For testing: accept any 4+ digit code
-//            // In production, use: if (!storedOTP.equals(otp))
-//            if (otp.length() < 4) {
-//                resp.put("success", false);
-//                resp.put("error", "Invalid OTP");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // Don't remove OTP yet - need it for password reset
-//            // Mark as verified by storing a verification token
-//            String verifyKey = "verified_" + email;
-//            otpStore.put(verifyKey, "verified");
-//            otpExpiry.put(verifyKey, System.currentTimeMillis() + OTP_EXPIRY_TIME);
-//            
-//            resp.put("success", true);
-//            resp.put("message", "OTP verified successfully");
-//            
-//            return ResponseEntity.ok(resp);
-//            
-//        } catch (Exception e) {
-//            resp.put("success", false);
-//            resp.put("error", "Failed to verify OTP: " + e.getMessage());
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
-//        }
-//    }
-//
-//    @PostMapping("/reset-password-with-otp")
-//    public ResponseEntity<Map<String, Object>> resetPasswordWithOTP(@RequestBody Map<String, String> request) {
-//        Map<String, Object> resp = new HashMap<>();
-//        
-//        try {
-//            String email = request.get("email");
-//            String otp = request.get("otp");
-//            String newPassword = request.get("newPassword");
-//            
-//            if (email == null || email.isEmpty()) {
-//                resp.put("success", false);
-//                resp.put("error", "Email is required");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            if (newPassword == null || newPassword.length() < 6) {
-//                resp.put("success", false);
-//                resp.put("error", "Password must be at least 6 characters");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // Verify OTP was verified
-//            String verifyKey = "verified_" + email;
-//            String verified = otpStore.get(verifyKey);
-//            Long expiryTime = otpExpiry.get(verifyKey);
-//            
-//            if (verified == null || expiryTime == null || System.currentTimeMillis() > expiryTime) {
-//                resp.put("success", false);
-//                resp.put("error", "OTP verification expired. Please start again.");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // Find user
-//            User user = userRepository.findByEmail(email).orElse(null);
-//            if (user == null) {
-//                resp.put("success", false);
-//                resp.put("error", "User not found");
-//                return ResponseEntity.badRequest().body(resp);
-//            }
-//            
-//            // Update password
-//            user.setPasswordHash(passwordEncoder.encode(newPassword));
-//            userRepository.save(user);
-//            
-//            // Remove verification token
-//            otpStore.remove(verifyKey);
-//            otpExpiry.remove(verifyKey);
-//            
-//            resp.put("success", true);
-//            resp.put("message", "Password reset successfully");
-//            
-//            return ResponseEntity.ok(resp);
-//            
-//        } catch (Exception e) {
-//            resp.put("success", false);
-//            resp.put("error", "Failed to reset password: " + e.getMessage());
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
-//        }
-//    }
+
     @PostMapping("/login-otp")
     public ResponseEntity<Map<String, Object>> loginWithOTP(@RequestBody Map<String, String> request) {
         Map<String, Object> resp = new HashMap<>();
@@ -1927,5 +1855,4 @@ public class Controller {
         }
     }
     
-//
 }
