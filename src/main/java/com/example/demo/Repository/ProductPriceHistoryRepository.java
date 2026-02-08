@@ -10,4 +10,5 @@ import java.util.List;
 public interface ProductPriceHistoryRepository extends JpaRepository<ProductPriceHistory, Long> {
     void deleteByProduct(Product product);
     List<ProductPriceHistory> findByProductOrderByChangedAtAsc(Product product);
+    List<ProductPriceHistory> findByProductIdInOrderByChangedAtAsc(List<Long> productIds);
 }

@@ -1236,6 +1236,15 @@ public class Controller {
 
         return result;
     }
+    
+    @GetMapping("/products/price-history")
+    public Map<Long, List<ProductPriceHistory>> getBulkPriceHistory(@RequestParam List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return Collections.emptyMap();
+        
+        List<ProductPriceHistory> all = priceHistoryRepository.findByProductIdInOrderByChangedAtAsc(ids);
+        return all.stream()
+            .collect(Collectors.groupingBy(h -> h.getProduct().getId()));
+    }
 
 
     @PostMapping(
