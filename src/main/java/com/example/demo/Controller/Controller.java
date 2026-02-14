@@ -1065,27 +1065,27 @@ public class Controller {
 //        return product;
 //    }
 
-    @Transactional
-    @PutMapping("/products/{id}/price")
-    public Product updateProductPrice(@PathVariable Long id,
-                                      @RequestBody Map<String, Double> body) {
+    // @Transactional
+    // @PutMapping("/products/{id}/price")
+    // public Product updateProductPrice(@PathVariable Long id,
+    //                                   @RequestBody Map<String, Double> body) {
 
-        Double newPrice = body.get("price");
-        if (newPrice == null) throw new RuntimeException("price is required");
+    //     Double newPrice = body.get("price");
+    //     if (newPrice == null) throw new RuntimeException("price is required");
 
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+    //     Product product = productRepository.findById(id)
+    //             .orElseThrow(() -> new RuntimeException("Product not found"));
 
-        product.setPrice(newPrice);
+    //     product.setPrice(newPrice);
 
-        ProductPriceHistory history = new ProductPriceHistory();
-        history.setProduct(product);
-        history.setPrice(newPrice);
-        history.setChangedAt(LocalDateTime.now());
-        priceHistoryRepository.save(history);
+    //     ProductPriceHistory history = new ProductPriceHistory();
+    //     history.setProduct(product);
+    //     history.setPrice(newPrice);
+    //     history.setChangedAt(LocalDateTime.now());
+    //     priceHistoryRepository.save(history);
 
-        return product;
-    }
+    //     return product;
+    // }
 
     @GetMapping("/greetings")
     public List<Greeting> getAllGreetings() {
