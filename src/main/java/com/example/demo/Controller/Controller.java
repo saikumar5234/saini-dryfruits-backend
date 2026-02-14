@@ -1182,12 +1182,28 @@ public class Controller {
 //
 //        return result;
 //    }
+    @Transactional
+    @PutMapping("/products/reorder")
+    public ResponseEntity<?> reorderProducts(@RequestBody ReorderRequest request) {
+        if (request.getProductIds() == null || request.getProductIds().isEmpty()) {
+            return ResponseEntity.badRequest().body("productIds is required");
+        }
+        for (int i = 0; i < request.getProductIds().size(); i++) {
+            productRepository.updateSortOrder(request.getProductIds().get(i), i);
+        }
+        return ResponseEntity.ok().build();
+    }
 
+    public static class ReorderRequest {
+        private List<Long> productIds;
+        public List<Long> getProductIds() { return productIds; }
+        public void setProductIds(List<Long> productIds) { this.productIds = productIds; }
+    }
 
     @GetMapping("/products")
     public List<ProductResponseDTO> getAllProducts() {
 
-        List<Product> products = productRepository.findAll();
+    	List<Product> products = productRepository.findAllByOrderBySortOrderAscIdAsc();
 
         List<Long> productIds = products.stream()
                 .map(Product::getId)

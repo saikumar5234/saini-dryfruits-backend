@@ -1,8 +1,6 @@
 package com.example.demo.model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +25,9 @@ public class Product {
     private String descriptionJson;
 
     private Double price;
-    
+
+    @Column(name = "sort_order", nullable = false)
+    private Integer sortOrder = 0;
 
     // getters & setters
     public Long getId() { return id; }
@@ -36,10 +36,12 @@ public class Product {
     public String getNameJson() { return nameJson; }
     public String getDescriptionJson() { return descriptionJson; }
     public Double getPrice() { return price; }
+    public Integer getSortOrder() { return sortOrder; }
 
     public void setCategory(String category) { this.category = category; }
     public void setDisabled(boolean disabled) { isDisabled = disabled; }
     public void setNameJson(String nameJson) { this.nameJson = nameJson; }
     public void setDescriptionJson(String descriptionJson) { this.descriptionJson = descriptionJson; }
     public void setPrice(Double price) { this.price = price; }
+    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
 }
