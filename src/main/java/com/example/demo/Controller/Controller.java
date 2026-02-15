@@ -1182,6 +1182,7 @@ public class Controller {
 //
 //        return result;
 //    }
+    
     @Transactional
     @PutMapping("/products/reorder")
     public ResponseEntity<?> reorderProducts(@RequestBody ReorderRequest request) {
@@ -1199,7 +1200,6 @@ public class Controller {
         public List<Long> getProductIds() { return productIds; }
         public void setProductIds(List<Long> productIds) { this.productIds = productIds; }
     }
-
     @GetMapping("/products")
     public List<ProductResponseDTO> getAllProducts() {
 
