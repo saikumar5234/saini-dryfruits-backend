@@ -24,26 +24,42 @@ public class PushTokenService {
     
     /**
      * Register or update push token for a user
-     * If token exists for user and platform, update it; otherwise create new
+     * Upsert by pushToken (device identity). This avoids overwriting tokens
+     * when a user logs in on multiple devices with the same platform.
      */
     public PushToken registerPushToken(String pushToken, String platform, String userId) {
-        // Check if token already exists for this user and platform
-        Optional<PushToken> existingToken = pushTokenRepository
-            .findByUserIdAndPlatform(userId, platform);
+        if (pushToken == null || pushToken.trim().isEmpty()) {
+            throw new IllegalArgumentException("pushToken is required");
+        }
+        if (platform == null || platform.trim().isEmpty()) {
+            throw new IllegalArgumentException("platform is required");
+        }
+        if (userId == null || userId.trim().isEmpty()) {
+            throw new IllegalArgumentException("userId is required");
+        }
+
+        String normalizedToken = pushToken.trim();
+        String normalizedPlatform = platform.trim().toLowerCase();
+        String normalizedUserId = userId.trim();
+
+        // Upsert by token string (preferred)
+        Optional<PushToken> existingToken = pushTokenRepository.findByPushToken(normalizedToken);
         
         PushToken token;
         if (existingToken.isPresent()) {
             // Update existing token
             token = existingToken.get();
-            token.setPushToken(pushToken);
+            token.setPushToken(normalizedToken);
+            token.setPlatform(normalizedPlatform);
+            token.setUserId(normalizedUserId);
             token.setUpdatedAt(LocalDateTime.now());
             token.setActive(true);
         } else {
             // Create new token
             token = new PushToken();
-            token.setPushToken(pushToken);
-            token.setPlatform(platform);
-            token.setUserId(userId);
+            token.setPushToken(normalizedToken);
+            token.setPlatform(normalizedPlatform);
+            token.setUserId(normalizedUserId);
             token.setActive(true);
             token.setCreatedAt(LocalDateTime.now());
             token.setUpdatedAt(LocalDateTime.now());
@@ -76,6 +92,19 @@ public class PushTokenService {
             token.get().setUpdatedAt(LocalDateTime.now());
             pushTokenRepository.save(token.get());
         }
+    }
+
+    /**
+     * Deactivate by push token string (soft delete)
+     */
+    public void deactivateByPushToken(String pushToken) {
+        if (pushToken == null || pushToken.trim().isEmpty()) return;
+
+        pushTokenRepository.findByPushToken(pushToken.trim()).ifPresent(token -> {
+            token.setActive(false);
+            token.setUpdatedAt(LocalDateTime.now());
+            pushTokenRepository.save(token);
+        });
     }
     
     /**

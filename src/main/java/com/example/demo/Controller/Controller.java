@@ -38,6 +38,7 @@ import com.example.demo.services.AdminOtpService;
 import com.example.demo.services.AdminSignupRequestService;
 import com.example.demo.services.BannerTextService;
 import com.example.demo.services.CategoryService;
+import com.example.demo.services.PushNotificationService;
 import com.example.demo.services.PushTokenService;
 import com.example.demo.services.SmsService;
 import com.example.demo.services.UserService;
@@ -100,6 +101,8 @@ public class Controller {
 	    private CategoryService categoryService;
 	    @Autowired
 	    private PushTokenService pushTokenService;
+	    @Autowired
+	    private PushNotificationService pushNotificationService;
 
 	    
 
@@ -235,6 +238,30 @@ public class Controller {
         } catch (Exception e) {
             return ResponseEntity.status(500)
                 .body(createErrorResponse("Error deleting push token: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Deactivate push token by token string (soft delete)
+     * POST /api/push-tokens/deactivate
+     * body: { "pushToken": "ExponentPushToken[...]" }
+     */
+    @PostMapping("/push-tokens/deactivate")
+    public ResponseEntity<?> deactivatePushTokenByString(@RequestBody Map<String, String> request) {
+        try {
+            String pushToken = request.get("pushToken");
+            if (pushToken == null || pushToken.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(createErrorResponse("pushToken is required"));
+            }
+
+            pushTokenService.deactivateByPushToken(pushToken);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Push token deactivated"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(createErrorResponse("Error deactivating push token: " + e.getMessage()));
         }
     }
     
@@ -1016,8 +1043,15 @@ public class Controller {
     public ResponseEntity<Product> enableProduct(@PathVariable Long id) {
         return productRepository.findById(id)
             .map(product -> {
+                boolean wasDisabled = product.isDisabled();
                 product.setDisabled(false);
                 Product saved = productRepository.save(product);
+                if (wasDisabled) {
+                    try {
+                        pushNotificationService.notifyProductEnabledToAll(saved);
+                    } catch (Exception ignored) {
+                    }
+                }
                 return ResponseEntity.ok(saved);
             })
             .orElseGet(() -> ResponseEntity.notFound().build());
@@ -1082,6 +1116,7 @@ public class Controller {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
 
+        double oldPrice = product.getPrice() != null ? product.getPrice() : 0.0;
         product.setPrice(newPrice);
         productRepository.save(product);
 
@@ -1090,6 +1125,11 @@ public class Controller {
         history.setPrice(newPrice);
         history.setChangedAt(LocalDateTime.now());
         priceHistoryRepository.save(history);
+
+        try {
+            pushNotificationService.notifyPriceChangedToAll(product, oldPrice, newPrice);
+        } catch (Exception ignored) {
+        }
 
         return product;
     }
@@ -1141,7 +1181,50 @@ public class Controller {
             throw new RuntimeException("Invalid name/description JSON");
         }
 
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+
+        try {
+            if (!saved.isDisabled()) {
+                pushNotificationService.notifyNewProductToAll(saved);
+            }
+        } catch (Exception ignored) {
+        }
+
+        return saved;
+    }
+
+    /**
+     * Admin announcement push (send to all active devices)
+     * POST /api/admin/announcements/push
+     * body: { "title": "...", "body": "...", "data": { ... } }
+     */
+    @PostMapping("/admin/announcements/push")
+    public ResponseEntity<?> sendAnnouncementPush(@RequestBody Map<String, Object> request) {
+        try {
+            String title = request.get("title") != null ? request.get("title").toString() : null;
+            String body = request.get("body") != null ? request.get("body").toString() : null;
+            Object dataObj = request.get("data");
+
+            if (title == null || title.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(createErrorResponse("title is required"));
+            }
+            if (body == null || body.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(createErrorResponse("body is required"));
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = dataObj instanceof Map ? (Map<String, Object>) dataObj : null;
+
+            int sent = pushNotificationService.sendAnnouncementToAll(title.trim(), body.trim(), data);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Announcement push sent",
+                    "sentCount", sent
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(createErrorResponse("Error sending announcement push: " + e.getMessage()));
+        }
     }
 
 
