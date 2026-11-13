@@ -101,7 +101,8 @@ public class Controller {
 	    @Autowired
 	    private PushTokenService pushTokenService;
 
-	    
+	private static final String REVIEW_MOBILE = "9999999999";
+	private static final String REVIEW_OTP = "123456";
 
 
 	private static final Pattern GST_PATTERN = Pattern.compile("^[0-9A-Z]{15}$");
@@ -1667,6 +1668,18 @@ public class Controller {
             String mobile = request.get("mobile");
             String otp = request.get("otp");
             String type = Optional.ofNullable(request.get("type")).orElse("signup");
+            
+         // Google Play review account
+            if (REVIEW_MOBILE.equals(mobile)
+                    && REVIEW_OTP.equals(otp == null ? null : otp.trim())
+                    && "login".equalsIgnoreCase(type)) {
+
+                resp.put("success", true);
+                resp.put("message", "OTP verified successfully");
+                resp.put("reviewAccount", true);
+
+                return ResponseEntity.ok(resp);
+            }
 
             // Trim and validate OTP
             if (otp == null || otp.trim().isEmpty()) {
