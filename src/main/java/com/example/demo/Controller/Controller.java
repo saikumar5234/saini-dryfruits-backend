@@ -1321,36 +1321,46 @@ public class Controller {
         return ResponseEntity.noContent().build(); // 204
     }
     
-    @DeleteMapping("/products/{id}")
-    @Transactional
-    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
-        try {
-            Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
-            
-          
-            priceHistoryRepository.deleteByProduct(product);
-            
-          
-            productRepository.deleteById(id);
-            
-            return ResponseEntity.ok().body(Map.of(
-                "message", "Product and associated data deleted successfully",
-                "deletedProductId", id
-            ));
-            
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(404).body(Map.of(
-                "error", "Product not found",
-                "message", e.getMessage()
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of(
-                "error", "Internal server error",
-                "message", "Failed to delete product: " + e.getMessage()
-            ));
-        }
+
+@DeleteMapping("/products/{id}")
+@Transactional
+public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
+
+    try {
+        Product product = productRepository.findById(id)
+            .orElseThrow(() ->
+                new RuntimeException("Product not found with id: " + id));
+
+        // 1. Delete associated product images first
+        productImageRepository.deleteByProductId(id);
+
+        // 2. Delete associated price history
+        priceHistoryRepository.deleteByProduct(product);
+
+        // 3. Delete the product
+        productRepository.delete(product);
+
+        return ResponseEntity.ok().body(Map.of(
+            "message", "Product and associated data deleted successfully",
+            "deletedProductId", id
+        ));
+
+    } catch (RuntimeException e) {
+
+        return ResponseEntity.status(404).body(Map.of(
+            "error", "Product not found",
+            "message", e.getMessage()
+        ));
+
+    } catch (Exception e) {
+
+        return ResponseEntity.status(500).body(Map.of(
+            "error", "Internal server error",
+            "message", "Failed to delete product: " + e.getMessage()
+        ));
     }
+}
+
     @PostMapping("/user-sessions")
     public Map<String, Object> saveSessionData(@RequestBody Map<String, Object> sessionData) {
         Map<String, Object> response = new HashMap<>();
